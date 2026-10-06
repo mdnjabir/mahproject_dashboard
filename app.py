@@ -182,100 +182,83 @@ else:
     table_df["_last_update"] = pd.NaT
 
 # Most recently updated projects first; projects with no activity yet sink to the bottom.
-table_df = table_df.sort_values("_last_update", ascending=False, na_position="last")
+table_df = table_df.sort_values("_last_update", ascending=False, na_position="last").reset_index(drop=True)
 
 
-def _freshness_label(row: pd.Series) -> str:
-    if row["project_id"] in new_project_ids:
-        return "New"
-    if row["project_id"] in updated_project_ids:
-        return "Updated"
-    return ""
+def _toggle_project(project_id: str) -> None:
+    current = st.session_state.get("selected_project_id")
+    st.session_state["selected_project_id"] = None if current == project_id else project_id
 
+
+# Card list instead of st.dataframe: st.columns stacks vertically below ~640px,
+# so each project reflows into a single wrapped column on mobile instead of truncating.
+sel_project_id = st.session_state.get("selected_project_id")
 
 if "project_id" in table_df.columns:
-    table_df["freshness"] = table_df.apply(_freshness_label, axis=1)
-else:
-    table_df["freshness"] = ""
+    for _, row in table_df.iterrows():
+        project_id = row["project_id"]
+        is_selected = project_id == sel_project_id
+        with st.container(border=True):
+            name_col, view_col, state_col, person_col, count_col = st.columns([4, 1, 1.3, 1.6, 1])
 
-table_df = table_df.reset_index(drop=True)
-table_cols = [
-    c for c in ["project_name", "freshness", "state", "assigned_person", "activities"]
-    if c in table_df.columns
-]
+            with name_col:
+                st.markdown(f"**{row.get('project_name', '')}**")
+                if project_id in new_project_ids:
+                    st.badge("New", icon=":material/fiber_new:", color="green")
+                elif project_id in updated_project_ids:
+                    st.badge("Updated", icon=":material/update:", color="orange")
 
-FRESHNESS_STYLE = {
-    "New": "background-color: #d9f7e3; color: #0ca30c; font-weight: 600; border-radius: 4px;",
-    "Updated": "background-color: #fff3d6; color: #b36b00; font-weight: 600; border-radius: 4px;",
-}
+            with view_col:
+                st.button(
+                    "Hide" if is_selected else "View",
+                    icon=":material/visibility_off:" if is_selected else ":material/visibility:",
+                    key=f"view_project_{project_id}",
+                    width="stretch",
+                    on_click=_toggle_project,
+                    args=(project_id,),
+                )
 
+            with state_col:
+                st.caption("State")
+                st.markdown(row.get("state", "") or "—")
 
-def _style_freshness(val: str) -> str:
-    return FRESHNESS_STYLE.get(val, "")
+            with person_col:
+                st.caption("Assigned person")
+                st.markdown(row.get("assigned_person", "") or "—")
 
+            with count_col:
+                st.caption("Activities")
+                st.markdown(str(row.get("activities", 0)))
 
-table_df["view"] = ":material/visibility: View"
-view_idx = table_cols.index("project_name") + 1
-table_cols_with_action = table_cols[:view_idx] + ["view"] + table_cols[view_idx:]
+            # Show this project's activities inline, right under its own card.
+            if is_selected:
+                st.divider()
+                st.markdown("**Activities**")
 
-styled_table = table_df[table_cols_with_action].style.map(_style_freshness, subset=["freshness"])
+                if "project_id" in filt_act.columns:
+                    proj_acts = filt_act[filt_act["project_id"] == project_id].sort_values(
+                        "_update_date", ascending=False, na_position="last"
+                    )
+                else:
+                    proj_acts = pd.DataFrame()
 
+                if not proj_acts.empty:
+                    for _, act in proj_acts.iterrows():
+                        with st.container(border=True):
+                            st.markdown(f"**{act.get('title', '')}**")
+                            related_person = act.get("related_person", "")
+                            if related_person:
+                                st.caption(f"Related person: {related_person}")
+                            notes = act.get("notes", "")
+                            if notes:
+                                st.write(notes)
+                else:
+                    st.info("No activities recorded for this project.")
 
-def _handle_view_click():
-    click = st.session_state.get("projects_view_action")
-    if click is not None and click.row is not None:
-        st.session_state["selected_project_id"] = table_df.iloc[click.row]["project_id"]
-
-
-st.dataframe(
-    styled_table,
-    width="stretch",
-    hide_index=True,
-    column_config={
-        "project_name": st.column_config.TextColumn("Project", width=260),
-        "view": st.column_config.ButtonColumn(
-            "Open", width=90, on_click=_handle_view_click, key="projects_view_action"
-        ),
-        "state": st.column_config.TextColumn("State", width=120),
-        "assigned_person": st.column_config.TextColumn("Assigned person", width=160),
-        "activities": st.column_config.NumberColumn("Activities", width=100),
-        "freshness": st.column_config.TextColumn("Status", width=100),
-    },
-)
 st.caption(
     "New · created in the last 24h   ·   Updated · new activity added in the last 24h  "
-    "·  sorted by most recently updated   ·   click \"View\" to see a project's activities"
+    "·  sorted by most recently updated   ·   tap \"View\" to see a project's activities, \"Hide\" to collapse"
 )
-
-sel_project_id = st.session_state.get("selected_project_id")
-if sel_project_id is not None and "project_id" in table_df.columns and (
-    table_df["project_id"] == sel_project_id
-).any():
-    sel_project_name = table_df.loc[table_df["project_id"] == sel_project_id, "project_name"].iloc[0]
-
-    st.markdown(f"**Activities — {sel_project_name}**")
-
-    if "project_id" in filt_act.columns:
-        proj_acts = filt_act[filt_act["project_id"] == sel_project_id].sort_values(
-            "_update_date", ascending=False, na_position="last"
-        )
-    else:
-        proj_acts = pd.DataFrame()
-
-    act_cols = [c for c in ["title", "related_person", "notes"] if c in proj_acts.columns]
-    if not proj_acts.empty and act_cols:
-        st.dataframe(
-            proj_acts[act_cols].reset_index(drop=True),
-            width="stretch",
-            hide_index=True,
-            column_config={
-                "title": st.column_config.TextColumn("Activity", width="medium"),
-                "related_person": st.column_config.TextColumn("Related person"),
-                "notes": st.column_config.TextColumn("Remarks", width="large"),
-            },
-        )
-    else:
-        st.info("No activities recorded for this project.")
 
 st.divider()
 
@@ -345,21 +328,29 @@ if "project_name" in filt.columns:
             if not proj_acts.empty:
                 st.markdown("#### Activities")
 
-                act_display = [
-                    c
-                    for c in ["activity_id", "type", "title", "related_person",
-                              "status", "date", "completed_date", "notes"]
-                    if c in proj_acts.columns
-                ]
-                st.dataframe(
-                    proj_acts[act_display].reset_index(drop=True),
-                    width="stretch",
-                    hide_index=True,
-                    column_config={
-                        "date": st.column_config.DateColumn("Date", format="DD MMM YYYY"),
-                        "completed_date": st.column_config.DateColumn("Completed", format="DD MMM YYYY"),
-                    },
-                )
+                for _, act in proj_acts.iterrows():
+                    with st.container(border=True):
+                        st.markdown(f"**{act.get('title', '')}**")
+
+                        meta_bits = [
+                            str(v) for v in (act.get("type", ""), act.get("status", ""))
+                            if v
+                        ]
+                        if act.get("related_person", ""):
+                            meta_bits.append(f"with {act['related_person']}")
+                        if meta_bits:
+                            st.caption("  ·  ".join(meta_bits))
+
+                        date_bits = []
+                        if pd.notna(act.get("date")):
+                            date_bits.append(f"Date: {act['date']:%d %b %Y}")
+                        if pd.notna(act.get("completed_date")):
+                            date_bits.append(f"Completed: {act['completed_date']:%d %b %Y}")
+                        if date_bits:
+                            st.caption("  ·  ".join(date_bits))
+
+                        if act.get("notes", ""):
+                            st.write(act["notes"])
             else:
                 st.info("No activities recorded for this project.")
 
