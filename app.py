@@ -190,6 +190,53 @@ def _toggle_project(project_id: str) -> None:
     st.session_state["selected_project_id"] = None if current == project_id else project_id
 
 
+ACTIVITIES_PAGE_SIZE = 5
+
+
+def _activities_page(df: pd.DataFrame, project_id: str, state_key: str) -> tuple[pd.DataFrame, int, int]:
+    """Return (page_slice, current_page, total_pages) for one project's activities, 1-indexed."""
+    pages = st.session_state.setdefault(state_key, {})
+    total_pages = max(1, -(-len(df) // ACTIVITIES_PAGE_SIZE))
+    current = min(max(pages.get(project_id, 1), 1), total_pages)
+    pages[project_id] = current
+    start = (current - 1) * ACTIVITIES_PAGE_SIZE
+    return df.iloc[start : start + ACTIVITIES_PAGE_SIZE], current, total_pages
+
+
+def _set_activities_page(state_key: str, project_id: str, page: int) -> None:
+    st.session_state.setdefault(state_key, {})[project_id] = page
+
+
+def _render_page_controls(
+    project_id: str, state_key: str, current: int, total_pages: int, key_prefix: str
+) -> None:
+    if total_pages <= 1:
+        return
+    prev_col, label_col, next_col = st.columns([1, 2, 1])
+    with prev_col:
+        st.button(
+            "Previous",
+            icon=":material/chevron_left:",
+            key=f"{key_prefix}_prev_{project_id}",
+            width="stretch",
+            disabled=current <= 1,
+            on_click=_set_activities_page,
+            args=(state_key, project_id, current - 1),
+        )
+    with label_col:
+        st.markdown(f"Page {current} of {total_pages}", text_alignment="center")
+    with next_col:
+        st.button(
+            "Next",
+            icon=":material/chevron_right:",
+            key=f"{key_prefix}_next_{project_id}",
+            width="stretch",
+            disabled=current >= total_pages,
+            on_click=_set_activities_page,
+            args=(state_key, project_id, current + 1),
+        )
+
+
 # Card list instead of st.dataframe: st.columns stacks vertically below ~640px,
 # so each project reflows into a single wrapped column on mobile instead of truncating.
 sel_project_id = st.session_state.get("selected_project_id")
@@ -202,7 +249,7 @@ if "project_id" in table_df.columns:
             name_col, view_col, state_col, person_col, count_col = st.columns([4, 1, 1.3, 1.6, 1])
 
             with name_col:
-                st.markdown(f"**{row.get('project_name', '')}**")
+                st.markdown(f"**{str(row.get('project_name', '')).strip()}**")
                 if project_id in new_project_ids:
                     st.badge("New", icon=":material/fiber_new:", color="green")
                 elif project_id in updated_project_ids:
@@ -243,15 +290,21 @@ if "project_id" in table_df.columns:
                     proj_acts = pd.DataFrame()
 
                 if not proj_acts.empty:
-                    for _, act in proj_acts.iterrows():
+                    page_df, current_page, total_pages = _activities_page(
+                        proj_acts, project_id, "activities_page_by_project"
+                    )
+                    for _, act in page_df.iterrows():
                         with st.container(border=True):
-                            st.markdown(f"**{act.get('title', '')}**")
+                            st.markdown(f"**{str(act.get('title', '')).strip()}**")
                             related_person = act.get("related_person", "")
                             if related_person:
                                 st.caption(f"Related person: {related_person}")
                             notes = act.get("notes", "")
                             if notes:
                                 st.write(notes)
+                    _render_page_controls(
+                        project_id, "activities_page_by_project", current_page, total_pages, "card"
+                    )
                 else:
                     st.info("No activities recorded for this project.")
 
@@ -328,9 +381,12 @@ if "project_name" in filt.columns:
             if not proj_acts.empty:
                 st.markdown("#### Activities")
 
-                for _, act in proj_acts.iterrows():
+                page_df, current_page, total_pages = _activities_page(
+                    proj_acts, proj_id, "detail_activities_page_by_project"
+                )
+                for _, act in page_df.iterrows():
                     with st.container(border=True):
-                        st.markdown(f"**{act.get('title', '')}**")
+                        st.markdown(f"**{str(act.get('title', '')).strip()}**")
 
                         meta_bits = [
                             str(v) for v in (act.get("type", ""), act.get("status", ""))
@@ -351,6 +407,9 @@ if "project_name" in filt.columns:
 
                         if act.get("notes", ""):
                             st.write(act["notes"])
+                _render_page_controls(
+                    proj_id, "detail_activities_page_by_project", current_page, total_pages, "detail"
+                )
             else:
                 st.info("No activities recorded for this project.")
 
