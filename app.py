@@ -9,65 +9,19 @@ from datetime import datetime, timedelta, timezone
 
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
 from data_loader import load_sheet
 from freshness import track_first_seen
 
 # ── Config ──
 SHEET_ID = "1YklJC8YnjUvAXY9PImRLqWouqKiPIj4laeSFH1l6qJk"
 
-# ── Palette (validated dataviz defaults) ──
-PAL = {
-    "blue": "#2a78d6",
-    "orange": "#eb6834",
-    "aqua": "#1baf7a",
-    "yellow": "#eda100",
-    "magenta": "#e87ba4",
-    "green": "#008300",
-    "violet": "#4a3aa7",
-    "red": "#e34948",
-}
 STATUS_COLORS = {
     "good": "#0ca30c",
     "warning": "#fab219",
     "serious": "#ec835a",
     "critical": "#d03b3b",
 }
-SURFACE = "#fcfcfb"
-INK_PRIMARY = "#0b0b0b"
 INK_SECONDARY = "#52514e"
-INK_MUTED = "#898781"
-GRIDLINE = "#e1e0d9"
-
-ACTIVITY_STATUS_COLOR = {
-    "Done": PAL["aqua"],
-    "Pending": PAL["yellow"],
-    "In Progress": PAL["blue"],
-    "Delayed": PAL["orange"],
-    "N/A": INK_MUTED,
-}
-
-# ── Plotly layout defaults ──
-LAYOUT_DEFAULTS = dict(
-    paper_bgcolor=SURFACE,
-    plot_bgcolor=SURFACE,
-    font=dict(family="system-ui, -apple-system, 'Segoe UI', sans-serif", color=INK_PRIMARY, size=13),
-    margin=dict(l=16, r=16, t=40, b=16),
-    xaxis=dict(gridcolor=GRIDLINE, gridwidth=1, zerolinecolor=GRIDLINE),
-    yaxis=dict(gridcolor=GRIDLINE, gridwidth=1, zerolinecolor=GRIDLINE),
-    hoverlabel=dict(
-        bgcolor="white",
-        font_size=13,
-        font_family="system-ui, -apple-system, 'Segoe UI', sans-serif",
-    ),
-)
-
-
-def apply_layout(fig, **overrides):
-    """Apply the standard layout to a Plotly figure."""
-    opts = {**LAYOUT_DEFAULTS, **overrides}
-    fig.update_layout(**opts)
-    return fig
 
 
 def activity_update_date(acts: pd.DataFrame) -> pd.Series:
@@ -83,7 +37,7 @@ st.set_page_config(
     page_title="MAHPO Dashboard",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # ── Custom CSS ──
@@ -246,7 +200,7 @@ else:
 
 table_df = table_df.reset_index(drop=True)
 table_cols = [
-    c for c in ["project_name", "state", "assigned_person", "activities", "freshness"]
+    c for c in ["project_name", "freshness", "state", "assigned_person", "activities"]
     if c in table_df.columns
 ]
 
@@ -261,7 +215,8 @@ def _style_freshness(val: str) -> str:
 
 
 table_df["view"] = ":material/visibility: View"
-table_cols_with_action = table_cols + ["view"]
+view_idx = table_cols.index("project_name") + 1
+table_cols_with_action = table_cols[:view_idx] + ["view"] + table_cols[view_idx:]
 
 styled_table = table_df[table_cols_with_action].style.map(_style_freshness, subset=["freshness"])
 
@@ -277,14 +232,14 @@ st.dataframe(
     width="stretch",
     hide_index=True,
     column_config={
-        "project_name": st.column_config.TextColumn("Project", width="large"),
-        "state": st.column_config.TextColumn("State"),
-        "assigned_person": st.column_config.TextColumn("Assigned person"),
-        "activities": st.column_config.NumberColumn("Activities", width="small"),
-        "freshness": st.column_config.TextColumn("Status", width="small"),
+        "project_name": st.column_config.TextColumn("Project", width=260),
         "view": st.column_config.ButtonColumn(
-            "Activities", width="small", on_click=_handle_view_click, key="projects_view_action"
+            "Open", width=90, on_click=_handle_view_click, key="projects_view_action"
         ),
+        "state": st.column_config.TextColumn("State", width=120),
+        "assigned_person": st.column_config.TextColumn("Assigned person", width=160),
+        "activities": st.column_config.NumberColumn("Activities", width=100),
+        "freshness": st.column_config.TextColumn("Status", width=100),
     },
 )
 st.caption(
@@ -405,28 +360,6 @@ if "project_name" in filt.columns:
                         "completed_date": st.column_config.DateColumn("Completed", format="DD MMM YYYY"),
                     },
                 )
-
-                # Activity status summary
-                if "status" in proj_acts.columns:
-                    act_status = proj_acts["status"].value_counts().reset_index()
-                    act_status.columns = ["Status", "Count"]
-                    act_colors = [ACTIVITY_STATUS_COLOR.get(s, INK_MUTED) for s in act_status["Status"]]
-
-                    fig_act = go.Figure(
-                        go.Bar(
-                            x=act_status["Status"],
-                            y=act_status["Count"],
-                            marker=dict(color=act_colors, cornerradius=4),
-                            text=act_status["Count"],
-                            textposition="auto",
-                            textfont=dict(size=12),
-                            hovertemplate="<b>%{x}</b>: %{y}<extra></extra>",
-                        )
-                    )
-                    apply_layout(fig_act, height=250, showlegend=False,
-                                 xaxis=dict(gridcolor=GRIDLINE),
-                                 yaxis=dict(title="Count", gridcolor=GRIDLINE))
-                    st.plotly_chart(fig_act, width="stretch")
             else:
                 st.info("No activities recorded for this project.")
 
