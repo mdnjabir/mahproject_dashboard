@@ -21,12 +21,29 @@ SCOPES = [
 # ---------- auth ----------
 
 def _get_client() -> gspread.Client:
-    """Authenticate with Google using the service account credentials."""
+    """Authenticate with Google.
+
+    Prefers Streamlit secrets (for Streamlit Cloud, where credentials.json
+    can't be committed to the repo); falls back to a local credentials.json
+    next to this script for local development.
+    """
+    try:
+        has_secret = "gcp_service_account" in st.secrets
+    except Exception:
+        has_secret = False
+
+    if has_secret:
+        creds = Credentials.from_service_account_info(
+            dict(st.secrets["gcp_service_account"]), scopes=SCOPES
+        )
+        return gspread.authorize(creds)
+
     creds_path = Path(__file__).parent / "credentials.json"
     if not creds_path.exists():
         st.error(
-            "credentials.json not found. "
-            "Place your Google service-account key file next to this script."
+            "No Google credentials found. Locally, place your service-account "
+            "credentials.json next to this script. On Streamlit Cloud, add a "
+            "[gcp_service_account] table to the app's Secrets instead (see README)."
         )
         st.stop()
     creds = Credentials.from_service_account_file(str(creds_path), scopes=SCOPES)
