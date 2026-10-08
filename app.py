@@ -59,6 +59,10 @@ st.markdown(
         font-size: 1.8rem;
         font-weight: 600;
     }
+    /* Project cards */
+    div[class*="st-key-project_card_"] {
+        background: #f1f1ef;
+    }
     /* Sidebar heading */
     section[data-testid="stSidebar"] h1 {
         font-size: 1.1rem;
@@ -245,7 +249,7 @@ if "project_id" in table_df.columns:
     for _, row in table_df.iterrows():
         project_id = row["project_id"]
         is_selected = project_id == sel_project_id
-        with st.container(border=True):
+        with st.container(border=True, key=f"project_card_{project_id}"):
             name_col, view_col, state_col, person_col, count_col = st.columns([4, 1, 1.3, 1.6, 1])
 
             with name_col:
