@@ -357,8 +357,12 @@ st.subheader("Project Detail")
 
 if "project_name" in filt.columns:
     project_names = filt["project_name"].tolist()
+    selected_name = None
     if project_names:
-        selected_name = st.selectbox("Select a project", project_names, index=0)
+        selected_name = st.selectbox(
+            "Select a project", project_names, index=None, placeholder="Choose a project"
+        )
+    if selected_name:
         sel_proj = filt[filt["project_name"] == selected_name].iloc[0]
 
         # Info cards
