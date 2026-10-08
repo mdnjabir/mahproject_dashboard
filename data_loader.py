@@ -115,6 +115,11 @@ def load_sheet(sheet_id: str) -> tuple[pd.DataFrame, pd.DataFrame]:
             if col in projects.columns:
                 projects[col] = projects[col].astype(str).apply(_parse_date)
 
+        # System timestamps stamped by the sheet's Apps Script (UTC ISO strings)
+        for col in ("created_at", "updated_at"):
+            if col in projects.columns:
+                projects[col] = pd.to_datetime(projects[col], utc=True, errors="coerce")
+
         # Numeric columns
         for col in ("budget_allocated", "budget_spent", "progress_pct"):
             if col in projects.columns:
@@ -140,6 +145,10 @@ def load_sheet(sheet_id: str) -> tuple[pd.DataFrame, pd.DataFrame]:
         for col in ("completed_date", "date", "due_date"):
             if col in activity.columns:
                 activity[col] = activity[col].astype(str).apply(_parse_date)
+
+        for col in ("created_at", "updated_at"):
+            if col in activity.columns:
+                activity[col] = pd.to_datetime(activity[col], utc=True, errors="coerce")
 
         for col in ("status", "type"):
             if col in activity.columns:

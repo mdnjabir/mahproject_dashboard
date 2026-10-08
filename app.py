@@ -6,6 +6,7 @@ Run:  streamlit run app.py
 """
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import streamlit as st
 import pandas as pd
@@ -35,7 +36,7 @@ def activity_update_date(acts: pd.DataFrame) -> pd.Series:
 # ── Page config ──
 st.set_page_config(
     page_title="MAHPO Dashboard",
-    page_icon="📊",
+    page_icon=str(Path(__file__).parent / "images.jpeg"),
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -161,10 +162,17 @@ st.subheader("Projects")
 proj_first_seen, act_first_seen = track_first_seen(projects, activity)
 fresh_cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
 
-new_project_ids = {pid for pid, ts in proj_first_seen.items() if ts >= fresh_cutoff}
+if "created_at" in projects.columns and "project_id" in projects.columns:
+    new_project_ids = set(projects.loc[projects["created_at"] >= fresh_cutoff, "project_id"])
+else:
+    new_project_ids = {pid for pid, ts in proj_first_seen.items() if ts >= fresh_cutoff}
 
 updated_project_ids = set()
-if "project_id" in activity.columns and "activity_id" in activity.columns:
+if "updated_at" in activity.columns and "project_id" in activity.columns:
+    updated_project_ids = set(
+        activity.loc[activity["updated_at"] >= fresh_cutoff, "project_id"]
+    )
+elif "project_id" in activity.columns and "activity_id" in activity.columns:
     recent_activity_ids = {aid for aid, ts in act_first_seen.items() if ts >= fresh_cutoff}
     updated_project_ids = set(
         activity.loc[activity["activity_id"].isin(recent_activity_ids), "project_id"]
@@ -313,7 +321,7 @@ if "project_id" in table_df.columns:
                     st.info("No activities recorded for this project.")
 
 st.caption(
-    "New · created in the last 24h   ·   Updated · new activity added in the last 24h  "
+    "New · created in the last 24h   ·   Updated · activity added or edited in the last 24h  "
     "·  sorted by most recently updated   ·   tap \"View\" to see a project's activities, \"Hide\" to collapse"
 )
 
